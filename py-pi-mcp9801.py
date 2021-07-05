@@ -4,10 +4,6 @@
 #
 # Reads the current temprature a MCP9801/2/3 sensor.
 #
-# Inspired  by the DEC Rainbow graphics demonstration this program draws the
-# colours of the rainbow in a series of concentric semi-circles (each  drawn
-# as a full circle with the botton half masked out by a rectangle).
-#
 # This  program  is free software: you can redistribute it and/or modify  it
 # under the terms of the GNU General Public License as published by the Free
 # Software Foundation, either version 3 of the License, or (at your  option)
@@ -22,25 +18,31 @@
 # with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 # 04 Jul 21   0.1   - Initial version - MT
+#             0.2   - Added comments and unicode degree symbol - MT
 #
 import time
 
 class MCP9801(object):
-
+  """
+      Interface to the MCP9801 temperature sensor.
+        :param  _bus:       The I2C bus to use (required).
+        :param  _address:   The address of the device (optional).
+  """
   # Valid addesses
-  MCP9801_VALID_I2C_ADDRESS = [0x4F]    # Valid addreses
+  MCP9801_VALID_I2C_ADDRESS = [0x4f]    # Valid device addreses
 
   # Register addresses for raw data
   MCP9801_REG_AMBIENT_TEMP = 0x00       # Ambient tempreature register
   MCP9801_REG_CONFIG = 0x01             # Sensor configuration register
   MCP9801_REG_TEMP_HYST = 0x02          # Temperature hysteresis register
   MCP9801_REG_TEMP_LIMIT = 0x03         # Temperature limit set register
-
-  MCP9801_REG_CONFIG_DEFAULT = 0x60     # Use highest resolution (by default)
-
+  
+  MCP9801_REG_CONFIG_DEFAULT = 0x60     # Use highest resolution 
+                                        # Factory default = 0x00
+  
   def __init__(self, _bus=None, _address=None):
-    if _bus is None: # Did the user pass a bus object?
-      raise IOError
+    if _bus is None: # Check bus if defined 
+      raise IOError('I2C bus not specified') 
     else:
       self.bus = _bus
 
@@ -56,6 +58,12 @@ class MCP9801(object):
 
   @property
   def temperature(self):
+    """
+        Gets the  current sensor temperature.  The raw data is  held  in the
+        upper 12 bits of a 16-bit word retuered as a little-endian value. To
+        obtain the current ambient temperature the byte order is swapped and
+        the value converted into a float.
+    """
     _raw = self.bus.read_word_data(self.address, self.MCP9801_REG_AMBIENT_TEMP)
     _raw  = (((_raw & 0xff) << 8)|((_raw >> 8) & 0xff)) # Swap bytes
     if (_raw & 0x8000): # Check sign bit and convert into a signed integer if set
@@ -65,11 +73,24 @@ class MCP9801(object):
 
   @property
   def resolution(self):
+    """
+        Gets the current sensor temperature resolution from bits 5 and 6  of
+        the configuration register.
+        
+        Value     Resolution     Response time
+          0            0.5 C        30 ms
+          1           0.25 C        65 ms
+          2          0.125 C       130 ms
+          3         0.0625 C       250 ms
+    """
     _data = self.bus.read_word_data(self.address, self.MCP9801_REG_CONFIG)
     return _data & 0b01100000 >> 5
 
   @resolution.setter
   def resolution(self, _mode):
+    """
+        Saves the temperature resolution in the configuration register. 
+    """
     _mode &= 0x03 # Ignore anything bit the least signifigent two bits
     _data = self.bus.read_word_data(self.address, self.MCP9801_REG_CONFIG)
     _data &= 0b10011111 # Clear the mode bits
@@ -88,7 +109,7 @@ if __name__ == '__main__':
     sys.stdout.write ("%s\n" % sys.version.split('\n')[0])
     _bus = smbus.SMBus(I2CBUS)
     _mcp9801 = MCP9801(_bus)
-    _mcp9801.resolution = 0x02 # 0.125 degree resolution
+    _mcp9801.resolution = 0x01 # Change resolution to 0.25 degree
 
     _now = time.time()
     _time = (_now - _now % INTERVAL) + INTERVAL
@@ -99,7 +120,8 @@ if __name__ == '__main__':
        if _time -_now <= 0:
           _time = (_now - _now % INTERVAL) + INTERVAL
           sys.stdout.write ("%s\t" % time.strftime('%X', (time.localtime(time.time()))))
-          sys.stdout.write ("%.2f C\n" % round(_mcp9801.temperature, 2))
+          # sys.stdout.write ("%.2f°C\n" % round(_mcp9801.temperature, 2))
+          sys.stdout.write ((u'%.2f\u00b0C\n' % round(_mcp9801.temperature, 2)).encode('utf-8'))
 
   except KeyboardInterrupt: # Ctrl-C
     sys.stdout.write("\n")
